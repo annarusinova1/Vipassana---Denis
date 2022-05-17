@@ -1,0 +1,26 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os 
+data  = "D:\\work\\HSE\\vipassana\\analysis\\combined_electrodes.csv"
+df = pd.read_csv(data,sep=';')
+df.columns = df.columns.str.lower()
+columns = df.columns
+parent_dir = "D:\\work\\HSE\\vipassana\\plots_all_stagesblatobeta\\"
+path = os.path.join(parent_dir) 
+os.mkdir(path) 
+    # сохранить на диск path = os.path.join(parent_dir, directory) 
+    # сделать папку с названием os.mkdir(path)  
+for column in columns[5:47]:
+    for name in df['subj_name'].unique():
+        plt.close('all')
+        title = ( column + '_baseline')
+        ytitle = column
+        ax = sns.barplot(data=df.query('stage < 2'), x="stage", y=column, hue = 'time_point', palette="RdPu")
+        ax.set_title(title)
+        ax.set_ylim([0, 13])
+        
+        file_name = path +'\\'+ column +'.jpg'
+        print(file_name)
+        plt.savefig(file_name)
+        plt.show()
