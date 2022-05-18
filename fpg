@@ -1,0 +1,238 @@
+from mne.io import read_raw_edf
+import matplotlib.pyplot as plt
+from scipy.signal import find_peaks
+import numpy 
+import numpy as np
+import statistics
+from scipy.interpolate import interp1d
+import math
+from scipy import signal
+import pandas as pd
+fpg_chanel = 6 #номер канала фпг в записи полирек, можно проверить в edf browser  
+file_name = 'D:\work\HSE\vipassana\pretesting\polyrec\meditation1.edf'
+def plot_fpg_peaks(fpg, name):
+    fpg_peak_indices = find_peaks(fpg[0][0], height = 0, distance = 450)[0] # ищем пики, high - удаляем большую часть отрицательных пиков, distance - удаляем пики, расположенные ближе, чем 550 мсек друг от друга. в основном, дикротические зубцы, в очень редких случаях не определяется какой-нибудь пик из-за этого
+    markers = list(fpg_peak_indices)
+    #plt.close('all')
+    fig, ax = plt.subplots()
+    ax.plot(fpg[1], fpg[0][0], '-gD', markevery=markers)
+    ax.set_title(name)
+    ax.set_xlabel('time, sec')
+    ax.set_ylabel('FPG')
+    plt.show()    
+
+def ppg_analysis(fpg, time, subj_name, subj_number, time_point, group):
+    fpg_peak_indices = find_peaks(fpg[0][0], height = 0, distance = 450)[0]
+    peaks = list(fpg_peak_indices)
+    RR_dict = {}
+    peaks = list(fpg_peak_indices)
+    for i in range(len(peaks)-1):
+        RR = peaks[i+1] - peaks[i]
+        RR_dict.setdefault(peaks[i+1], RR)
+        
+    start = time[0]
+    finish = time[1]
+           
+# считаем чсс. start - начало фрагмента медитации, сек; finish - конец фрагмента медитации,сек; super_real_peaks - список пиков в отсчетах(сек*1000)
+    heart_beats_list = []
+    start_fragment = start
+    min_RR_list = []
+    max_RR_list = []
+    dRR_list = []      
+    RRNN_list = []
+    SDNN_list = []
+    CV_list = []
+    ME_list = [] # вылетает, если находит несоколько модю Пока что отключила все расчеты, связанные с модой
+    AME_list = []
+    RMSSD_list = []
+    NN50_list = []
+    pNN50_list = []
+    IVR_list = []
+    VPR_list = []
+    PAPR_list = []
+    SI_list = []
+
+    
+    start_fragment = start
+    while start_fragment*1000 <= finish*1000-20000: #переводим все значения в отсчеты - умножаем на частоту дискретизации 1000Гц
+        heart_beats = sum(1 for i in peaks if i > start_fragment*1000 and i <= start_fragment*1000+20000)#считаем количество ударов сердца на 20-секундных фрагментах
+        heart_beats_list.append(heart_beats)
+        start_fragment += 5 #сдвигаемся на 5 секунд и считаем следующие 20 секунд 
+    HR = (sum(heart_beats_list)/len(heart_beats_list))*3 # умножаем среднее количество ударов за 20 секунд на 3, чтобы получить чсс за минуту
+
+    start_fragment = start
+    while start_fragment*1000 <= finish*1000-20000:
+        RR_list = [] #список RR интервалов на заданном временном промежутке
+        for k in RR_dict:
+            if k> start_fragment*1000 and k<= start_fragment*1000+20000:
+                RR_list.append(RR_dict[k])      
+                #dRR - разница между максимальным и минимальный интервалом 
+        min_RR =  min(RR_list)
+        max_RR = max(RR_list)
+        dRR = max_RR - min_RR      
+                #RRNN - средний RR (мcек)
+        RRNN = numpy.mean(RR_list)
+                #стандартное отклонение NN интервалов (нормальные, у нас все нормальные) (мсек)
+        SDNN = statistics.stdev(RR_list)
+                # коэффциент вариации в процентах
+        CV = SDNN/RRNN * 100
+                # медиана, мсек Считаем вместо стандартно используемой модыб в кубиос тоже используют медиану
+        ME = statistics.median(RR_list)
+                #median_absolute_deviation, мсек
+        dev_list = []
+        for RR in RR_list:
+            dev_list.append(abs(RR - ME))
+        MAD = statistics.median(dev_list)
+                # амплитуда бина медианы +/- абсолютное отклонение от медианы в процентах от общего числа отсчетов
+        AME = (sum(1 for i in RR_list if i> ME-MAD and i < ME+MAD))/len(RR_list)*100
+                #RMSSD корень квадратный из средней суммы квадратов разностей соседних КИ коррелирует с hf, показатель активности блуждающего нерва
+        delta_RR_square_list = []
+        for i in range(len(RR_list)-1):
+            delta_RR_square_list.append((RR_list[i+1] - RR_list[i])**2)
+        RMSSD = numpy.mean(delta_RR_square_list)**0.5
+                #pNN50 — процент соседних кардиоинтервалов, отличающихся друг от друга более чем на 50 мс (норма 7±2%), также мало изменятся в зависимости от длины записи.
+        delta_RR_list = []
+        for i in range(len(RR_list)-1):
+            delta_RR_list.append(RR_list[i+1] - RR_list[i])
+        NN50 = sum(1 for j in delta_RR_list if j > 50)
+        pNN50 = NN50/len(delta_RR_list)*100
+                #??? в каких единицах? индекс вегетативного равновесия ИВР=AMo/dRR указывает на соотношение между активностью симпатического и парасимпатического отделов ВНС
+        IVR = (AME)/dRR
+                #??? в каких единицах? вегетативный показатель ритма ВПР=1/(Mo*dRR) позволяет судить о вегетативном балансе организма;
+        VPR = 1/((ME/1000)*dRR)
+                #??? в каких единицах? показатель адекватности процессов регуляции ПАПР=AMo/Mo отражает соответствие между активностью сипатического отдела ВНС и ведущим уровнем синусового узла;
+        PAPR = AME/ME
+                #??? в каких единицах? индекс напряжения регуляторных систем ИН=AMo/(2*dRR*Mo) отражает степень централизации управления сердечным ритмом.
+        SI = AME/(2*dRR*ME) #(Stress index %/msec^2 - в таблице перевела в сек)
+        min_RR_list.append(min_RR)
+        max_RR_list.append(max_RR)
+        dRR_list.append(dRR)      
+        RRNN_list.append(RRNN)
+        SDNN_list.append(SDNN)
+        CV_list.append(CV)
+        ME_list.append(ME)
+        AME_list.append(AME)
+        RMSSD_list.append(RMSSD)
+        NN50_list.append(NN50)
+        pNN50_list.append(pNN50)
+        IVR_list.append(IVR)
+        VPR_list.append(VPR)
+        PAPR_list.append(PAPR)
+        SI_list.append(SI)
+        start_fragment += 5
+
+    start_fragment = start
+    t_peaks= []
+    RR_y = []
+    for j in peaks[1:]:
+        if j> start_fragment*1000 and j <= finish*1000:
+            t_peaks.append((j- start_fragment*1000))
+            RR_y.append(RR_dict[j])
+            
+    RR_x = t_peaks 
+    RR_x_new = np.linspace(RR_x[0],RR_x[-1],RR_x[-1]) #Create evenly spaced timeline starting at the second peak, its endpoint and length equal to position of last peak
+    f = interp1d(RR_x, RR_y, kind='cubic') #Interpolate the signal with cubic spline interpolation
+        
+    # строим частотную характеристику HRV
+    
+    n = (finish-start)*1000
+    frq = np.fft.fftfreq(int(n), d=((1/1000))) #divide the bins into frequency categories
+    frq = frq[range(int(n/2))] #Get single side of the frequency range
+    m = signal.detrend(f(np.array(RR_x_new)));# вычитаем тренд
+    bh,ah = signal.butter(3,0.017/(1000/2), btype = 'high'); # убираем частоты ниже 0.017 Гц
+    mhigh = signal.filtfilt(bh,ah,m);# берем только частоты выше 0.017
+    Fs = 1000;
+    frq, Pxx_den = signal.welch(mhigh, noverlap =50*Fs , fs = 1000, nperseg = 60*Fs) 
+    Y = Pxx_den/len(mhigh)
+
+    lf = np.trapz((Y[(frq>=0.04) & (frq<=0.15)])) #Slice frequency spectrum where x is between 0.04 and 0.15Hz (LF), and use NumPy's trapezoidal integration function to find the area
+    lf_ln = math.log(lf) # натуральный логарифм
+    hf = np.trapz((Y[(frq>=0.16) & (frq<=0.5)])) #Do the same for 0.16-0.5Hz (HF)
+    hf_ln = math.log(hf) # натуральный логарифм
+    lf_nu = lf/(lf+hf)
+    hf_nu = hf/(lf+hf)
+    lf_percent = lf/(lf+hf)*100
+    hf_percent = hf/(lf+hf)*100
+    lf_to_hf = lf/hf
+
+    # находим пики в низких и высоких частотах
+    lf_max = max(Y[(frq>=0.04) & (frq<=0.15)])
+    for i in range(len(frq)):
+        if frq[i] >= 0.04 and frq[i] <= 0.15:
+            if (Y[i]) == lf_max:
+                lf_peak = frq[i]
+    hf_max = max(Y[(frq>=0.16) & (frq<=0.5)])
+    for i in range(len(frq)):
+        if frq[i] >= 0.16 and frq[i] <= 0.5:
+            if (Y[i]) == hf_max:
+                hf_peak = frq[i]
+    
+    min_RR = numpy.mean(min_RR_list)
+    max_RR = numpy.mean(max_RR_list)    
+    dRR = numpy.mean(dRR_list)      
+    RRNN = numpy.mean(RRNN_list)
+    SDNN = numpy.mean(SDNN_list)
+    CV = numpy.mean(CV_list)
+    ME = numpy.mean(ME_list)
+    AME = numpy.mean(AME_list)
+    RMSSD = numpy.mean(RMSSD_list)
+    NN50 = numpy.mean(NN50_list)
+    pNN50 = numpy.mean(pNN50_list)
+    IVR = numpy.mean(IVR_list)
+    VPR = numpy.mean(VPR_list)
+    PAPR = numpy.mean(PAPR_list)
+    SI = numpy.mean(SI_list)
+  
+    lf = lf
+    lf_ln = lf_ln
+    hf = hf
+    hf_ln = hf_ln
+    lf_nu = lf_nu
+    hf_nu = hf_nu
+    lf_percent = lf_percent
+    hf_percent = hf_percent
+    lf_peak = lf_peak
+    hf_peak = hf_peak
+    lf_to_hf = lf_to_hf  
+    
+    pandas_data = {'subj_name': subj_name, 'subject_number': subj_number,'is_med': group,'time_point': time_point, 'stage': stage_number, 'HR': HR, 'min_RR': min_RR ,'max_RR': max_RR, 'dRR': dRR, 'RRNN': RRNN, 'SDNN': SDNN, 'CV': CV, 'ME': ME, 'AME': AME, 'RMSSD': RMSSD, 'NN50': NN50, 'pNN50': pNN50, 'IVR': IVR, 'VPR': VPR, 'PAPR': PAPR, 'SI': SI, 'lf': lf, 'lf_ln': lf_ln, 'hf': hf, 'hf_ln': hf_ln, 'lf_nu': lf_nu, 'hf_nu': hf_nu, 'lf_percent': lf_percent, 'hf_percent': hf_percent, 'lf_peak': lf_peak, 'hf_peak': hf_peak, 'lf/hf': lf_to_hf}
+    return(pandas_data)        
+timing_1 = [0,600]
+timing_2 = [630, 690]
+timing_3 = [700, 880]
+timing_4 = [880, 1060]
+timing_5 = [1060, 1240]
+timing_6 = [1240, 1420]
+timing_7 = [1420, 1600]
+timing_8 = [1600, 1780]
+timing_9 = [1780, 1960] 
+timing_10 = [1960, 2140]
+timing_11 = [2140, 2319]
+
+
+timing = [timing_1, timing_2, timing_3, timing_4, timing_5, timing_6, timing_7, timing_8, timing_9, timing_10, timing_11]
+
+dataset = 'D:\\work\\HSE\\vipassana\\pretesting\\denis.csv'
+datasets_list_csv = 'D:\\work\\HSE\\vipassana\\pretesting\\denis.csv'
+df=pd.read_csv(dataset,sep=';')
+
+fpg_data=pd.DataFrame()
+
+for i in range(3):
+    print(i)
+    file_name = df.loc[i, 'polyrec_path']
+    subj_number = df.loc[i, 'subject_number']
+    time_point = df.loc[i, 'time_point']
+    group = df.loc[i, 'group_number']
+    subj_name = 'denis'
+    name = str(df.loc[i, 'time_point'])
+    raws = read_raw_edf(file_name, preload=True)
+    raws = read_raw_edf(file_name, preload=True)
+    fpg = raws[6, :]
+    for stage_number in range(11):
+        time = timing[stage_number]
+        pandas_data = ppg_analysis(fpg, time, subj_name, subj_number, time_point, group)
+        fpg_data = fpg_data.append(pandas_data,ignore_index = True)
+fpg_data.to_csv('D:\\work\\HSE\\fpg_data.csv')  
+
+plot_fpg_peaks(fpg, name)
