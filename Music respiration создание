@@ -1,0 +1,139 @@
+from mne.io import concatenate_raws, read_raw_edf
+import matplotlib.pyplot as plt
+from scipy.signal import find_peaks
+import numpy 
+import numpy as np
+import statistics
+from scipy.interpolate import interp1d
+import math
+from scipy import signal
+from numpy import genfromtxt
+import csv
+import pandas as pd
+import scipy.io
+import os 
+#file_name = os.path.join(pyedflib.util.test_data_path(), 'D:\\work\\HSE\\meditation\\data\\021219 Osmakov\\Osmakov polyrec.edf')
+#####################################################################
+
+
+    
+###################################################################################################################
+timing_1 = [0,120]
+timing_2 = [121, 240]
+timing_3 = [241, 350]
+
+timing = [timing_1, timing_2, timing_3]
+######################################################################################################################
+dataset = 'D:\\work\\HSE\\vipassana\\pretesting\\denis.csv'
+datasets_list_csv = 'D:\\work\\HSE\\vipassana\\pretesting\\denis.csv'
+#dataset = "D:\\work\\HSE\\meditation\\experiment_2021\\data\\test.csv"
+df=pd.read_csv(dataset,sep=';')
+columns={'subj_name', 'subject_number','group_number', 'time_point', 'stage', 'respiration_rate'}
+parent_dir = "D:\\work\\HSE\\vipassana\\plots_all_stagesrespmusic\\"
+path = os.path.join(parent_dir) 
+os.mkdir(path) 
+resp_data=pd.DataFrame(columns = columns)
+line = 0
+#for i in range(len(df)):
+for i in range(3,6):
+    print(i)
+    height = df.loc[i, 'resp_height']
+    distance = df.loc[i, 'resp_distance']
+    file_name = df.loc[i, 'polyrec_path']
+    subj_number = df.loc[i, 'subject_number']
+    subj_name = df.loc[i, 'subject_name']
+    time_point = df.loc[i, 'time_point']
+    group = df.loc[i, 'group_number']
+    name = str(df.loc[i, 'time_point'])
+    raws = read_raw_edf(file_name, preload=True)
+    raws = read_raw_edf(file_name, preload=True)
+    resp = raws[8, :]
+    resp_peak_indices = find_peaks(resp[0][0], height = height, distance = distance)[0]
+    minus_resp_peak_indices = find_peaks(-1*resp[0][0], height = height, distance = distance)[0]
+    
+    '''
+    markers = list(resp_peak_indices)
+    fig, ax = plt.subplots()
+    ax.plot(resp[1], resp[0][0], '-gD', markevery=markers)
+    ax.set_title(name)
+    ax.set_xlabel('time, sec')
+    ax.set_ylabel('resp') 
+
+    #%matplotlib qt 
+   
+    file_name = 'column' +'.jpg'
+    print(file_name)
+    plt.savefig(file_name)
+    plt.show()   
+    
+    markers = list(minus_resp_peak_indices)
+    fig, ax = plt.subplots()
+    ax.plot(resp[1], resp[0][0], '-gD', markevery=markers)
+    ax.set_title(name)
+    ax.set_xlabel('time, sec')
+    ax.set_ylabel('resp')
+
+  
+    
+    x_pos = [l/1000 for l in resp_peak_indices] #время пиков в секундах
+    x_neg = [l/1000 for l in minus_resp_peak_indices]
+    resp_time = []
+    y_pos = [] # значения амплитуды фпг на интервале между первым и последним пиком
+    for i in resp_peak_indices:  
+        y_pos.append(resp[0][0][i])
+    x_new = np.linspace(9, 2319, 2310000)
+    f_pos = interp1d(x_pos, y_pos, kind='cubic')
+    y_neg = [] # значения амплитуды фпг на интервале между первым и последним пиком
+    for i in minus_resp_peak_indices:  
+        y_neg.append(resp[0][0][i])
+    f_neg = interp1d(x_neg, y_neg, kind='cubic')
+    
+    
+    plt.plot(f_pos(x_new))
+    plt.plot(f_neg(x_new))
+    plt.plot(resp[1]*1000, resp[0][0])
+    
+    
+    
+    amplitude = f_pos(x_new) - f_neg(x_new)
+    plt.plot(amplitude)
+         
+    ampl_dict = {}
+    for i in range(len(x_new)):
+        ampl_dict.setdefault(x_new[i], amplitude[i])
+ 
+'''      
+#########################################################################################            
+    
+    peaks = resp_peak_indices
+    for stage in range(len(timing)):
+        print(stage, subj_name)
+        start = timing[stage][0]
+        finish = timing[stage][1]
+        # считаем частоту дыхания. start - начало фрагмента медитации, сек; finish - конец фрагмента медитации,сек; peaks - список пиков в отсчетах(сек*1000)
+        #ampl_list = []
+        respiration_list = []
+        start_fragment = start
+        while start_fragment*1000 <= finish*1000-20000: #переводим все значения в отсчеты - умножаем на частоту дискретизации 1000Гц
+            respiration = sum(1 for i in peaks if i > start_fragment*1000 and i <= start_fragment*1000+20000)#считаем количество ударов сердца на 20-секундных фрагментах
+            respiration_list.append(respiration)
+            start_fragment += 5 #сдвигаемся на 5 секунд и считаем следующие 20 секунд 
+            '''
+            for i in x_new:
+                if i >start and i <= finish:
+                    ampl_list.append(ampl_dict[i]) 
+                    '''
+        resp_rate = (sum(respiration_list)/len(respiration_list))*3 # умножаем среднее количество ударов за 20 секунд на 3, чтобы получить чсс за минуту
+        #amplitude = statistics.median(ampl_list)
+            
+        #resp_data.loc[line, 'subj_name'] = subj_name
+        resp_data.loc[line, 'subject_number'] = subj_number
+        resp_data.loc[line, 'group_number'] = group
+        resp_data.loc[line, 'time_point'] = time_point
+        resp_data.loc[line, 'stage'] = stage
+        resp_data.loc[line, 'respiration_rate'] = resp_rate
+        #resp_data.loc[line, 'respiration_amplitude'] = amplitude
+        line += 1      
+    
+ 
+resp_data.to_csv('D:\\work\\HSE\\vipassana\\analysis\\music_resp_data_for_statistica.csv')                
