@@ -1,0 +1,32 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os 
+
+data  = 'D:\\work\\HSE\\vipassana\\analysis\\gsr\\gsr_data33.csv'
+df = pd.read_csv(data,sep=';')
+df.columns = df.columns.str.lower()
+columns = df.columns
+parent_dir = "D:\\work\\HSE\\vipassana\\plots_all_stagesgsrbaseline\\"
+path = os.path.join(parent_dir) 
+os.mkdir(path) 
+for column in columns[2:4]:
+#column = 'respiration_rate'
+    #if True:
+    #for name in df['subj_name'].unique():
+        plt.close('all')    
+        title = ( column + '_baseline')
+        ytitle = column
+        ax = sns.barplot(data=df.query('stage < 2'), x="stage", y=column, hue = 'time_point', palette="RdPu")
+        ax.set_title(title)
+        #fig = sns_plot.get_figure()
+        #plt.legend(labels=['15april','29april','12may'])
+        #file_name = path +'\\' + "_" + column +'.jpg'
+        #print(file_name)
+        #plt.savefig(file_name)
+        #plt.show()
+        
+        file_name = path +'\\'+ column +'.jpg'
+        print(file_name)
+        plt.savefig(file_name)
+        plt.show()
